@@ -29,7 +29,7 @@ public class MessageSimpleCodecFactory implements ProtocolCodecFactory{
 		return decoder;
 	}
 
-	class MessageEncoder implements ProtocolEncoder {
+	public  static  class MessageEncoder implements ProtocolEncoder {
 
 		@Override
 		public void encode(IoSession session, Object message, ProtocolEncoderOutput out) throws Exception {
@@ -42,7 +42,7 @@ public class MessageSimpleCodecFactory implements ProtocolCodecFactory{
 			buffer.put(msg.getData());
 			buffer.flip();
 			out.write(buffer);
-
+			out.flush();
 		}
 
 		@Override
@@ -53,22 +53,66 @@ public class MessageSimpleCodecFactory implements ProtocolCodecFactory{
 
 	}
 
-	class MessageDecoder implements ProtocolDecoder {
-
+	public  static class MessageDecoder implements ProtocolDecoder {
+		
+		static final String DECODER_STATE_KEY = MessageDecoder.class.getName() + ".STATE";
+		static final int  DECODER_STATE_BEGIN=0;
+		static final int  DECODER_STATE_HEAD_OK=1;
+		static final int  DECODER_STATE_OK=2;
+		
+		static final String MESSAGE_KEY = MessageSimple.class.getName() + ".STATE";
+		
 		@Override
 		public void decode(IoSession session, IoBuffer in, ProtocolDecoderOutput out) throws Exception {
 
 
-			//need fixSize
-			//need dataSize
-			in.prefixedDataAvailable(prefixLength)
-			if (in.remaining() >= MessageSimple.FixSize) {
-				int protocol = in.getInt();
-				int dataSize = in.getInt();
-				int numberOfCharachters = in.getInt();
-				Message msg = new Message(width, height, numberOfCharachters);
+			Integer stateObj=(Integer) session.getAttribute(DECODER_STATE_KEY);
+			MessageSimple msg=(MessageSimple) session.getAttribute(MESSAGE_KEY);
+			
+			if(stateObj==null){							
+				msg = new MessageSimple();
+				session.setAttribute(DECODER_STATE_KEY, DECODER_STATE_BEGIN);		
+				session.setAttribute(MESSAGE_KEY, msg);
+				stateObj=DECODER_STATE_BEGIN;				
+			}
+			
+			if(stateObj==DECODER_STATE_BEGIN){
+				
+				if (in.remaining() >= MessageSimple.FixSize) {
+					int protocol = in.getInt();
+					int dataSize = in.getInt();
+					
+					msg.setProtocol(protocol);
+					msg.setDataSize(dataSize);
+					
+					session.setAttribute(DECODER_STATE_KEY, DECODER_STATE_HEAD_OK);
+					stateObj=DECODER_STATE_HEAD_OK;		
+				}else{
+					return ;
+				}
+			}
+			
+			if(stateObj==DECODER_STATE_HEAD_OK){
+				
+				if (in.remaining() >= msg.getDataSize()) {
+				
+					byte[] bytes = new byte[msg.getDataSize()];
+				    in.get(bytes);
+				    msg.setData(bytes);
+		    
+				
+					stateObj=DECODER_STATE_OK;							
+				}else{
+					return ;
+				}
+			}
+			
+			if(stateObj==DECODER_STATE_OK){
+				
 				out.write(msg);
-
+				
+				session.setAttribute(DECODER_STATE_KEY, DECODER_STATE_BEGIN);		
+				session.setAttribute(MESSAGE_KEY, new MessageSimple());
 			}
 
 		}

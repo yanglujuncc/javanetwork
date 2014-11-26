@@ -5,6 +5,7 @@ public class Message {
 	    private int height;
 	    private int numberOfCharacters;
 	    
+	    
 	    public Message(int width, int height, int numberOfCharacters) {
 	        this.width = width;
 	        this.height = height;
