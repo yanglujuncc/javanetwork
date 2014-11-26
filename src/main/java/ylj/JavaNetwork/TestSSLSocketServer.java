@@ -49,7 +49,10 @@ public class TestSSLSocketServer {
 		// 监听和接收客户端连接
 		SSLServerSocketFactory factory = context.getServerSocketFactory();				
 		SSLServerSocket server = (SSLServerSocket) factory.createServerSocket(10002);
-	
+		
+		//开启客户端认证，默认不需要
+		server.setNeedClientAuth(true);
+		
 		System.out.println("ok");
 		SSLSocket ssocket = (SSLSocket) server.accept();
 		
