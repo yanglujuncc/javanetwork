@@ -5,8 +5,12 @@ public interface LineServerCallbackAccept {
 	
 
 	
-	public void connected();
+	/**
+	 * 
+	 * @param addr
+	 */
+	public void connected(String addr);
 
-	public void connectionLost();
+	public void connectionLost(String addr);
 
 }

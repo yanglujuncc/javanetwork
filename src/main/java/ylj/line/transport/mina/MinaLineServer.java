@@ -2,6 +2,10 @@ package ylj.line.transport.mina;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.mina.core.service.IoAcceptor;
@@ -15,33 +19,26 @@ import org.apache.mina.transport.socket.nio.NioSocketAcceptor;
 import org.apache.mina.transport.socket.nio.NioSocketConnector;
 
 import ylj.JavaNetwork.Mina.SimpleServer.ServerHandler;
-import ylj.line.client.LineClient;
 import ylj.line.client.LineClientCallbackConnection;
-import ylj.line.client.LineClientCallbackSend;
 import ylj.line.message.Message;
 import ylj.line.server.LineServer;
 import ylj.line.server.LineServerCallbackAccept;
 import ylj.line.server.LineServerCallbackSend;
-import ylj.line.transport.mina.MinaLineClient.ClientIOHandler;
-import ylj.line.transport.mina.MinaLineClient.SentMsgPair;
 
 
 public class MinaLineServer extends LineServer {
 	
-	NioSocketConnector connector;
-	LineClientCallbackConnection connectionCallback;
-	IoSession ioSession;
+	IoAcceptor acceptor;
+	LineServerCallbackAccept connectionCallback;
+	
 
-	SentMsgPair sendingMsg;
-	LinkedBlockingQueue<SentMsgPair> sentQueue;
 
-	SentRun sendRunner;
-	Thread sendThread;
-
-	String HOSTNAME;
 	int PORT;
 
+	Map<String,RemoteLinkedClient> remoteClientMap;
+	
 	class SentMsgPair {
+	
 		Message msg;
 		LineServerCallbackSend callback;
 
@@ -50,30 +47,20 @@ public class MinaLineServer extends LineServer {
 			this.callback = callback;
 		}
 	}
-
-	public MinaLineServer(String userName, String password) {
 	
-		sentQueue = new LinkedBlockingQueue<SentMsgPair>();
-
+	class RemoteLinkedClient{
+		SentMsgPair sendingMsg;
+		LinkedList<SentMsgPair> sentQueue;
+		IoSession ioSession;
+		
+		
 	}
 
-	public void startSendThread() {
-		if (sendThread != null && sendThread.isAlive()) {
-			sendThread.interrupt();
-		}
-		sendRunner = new SentRun();
-		sendThread = new Thread(sendRunner, "sent thread");
-		sendThread.start();
-
+	public MinaLineServer() {
+	
+		remoteClientMap=new HashMap<String,RemoteLinkedClient> ();
 	}
 
-	public void stopSendThread() {
-
-		if (sendThread != null && sendThread.isAlive()) {
-			sendThread.interrupt();
-		}
-
-	}
 
 
 	@Override
@@ -99,39 +86,9 @@ public class MinaLineServer extends LineServer {
 	}
 
 	@Override
-	public void send(Message msg, LineServerCallbackSend callback) {
+	public void send(String addr,Message msg, LineServerCallbackSend callback) {
 		SentMsgPair sentMsgPair = new SentMsgPair(msg, callback);
-		try {
-			sentQueue.put(sentMsgPair);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-
-	}
-
-	class SentRun implements Runnable {
-
-		@Override
-		public void run() {
-			System.out.println("send thread start...");
-			while (true) {
-				try {
-					if (sendingMsg != null)
-						sentQueue.wait();
-
-					sendingMsg = sentQueue.take();
-					ioSession.write(sendingMsg.msg);
-
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-					break;
-
-				}
-
-			}
-			System.out.println("send thread end.");
-
-		}
+	
 
 	}
 
@@ -145,21 +102,34 @@ public class MinaLineServer extends LineServer {
 		@Override
 		public void sessionOpened(IoSession session) throws Exception {
 			System.out.println("sessionOpened " + session.getRemoteAddress());
-			ioSession = session;
-			connectionCallback.connected();
-			startSendThread();
+			InetSocketAddress saddr=(InetSocketAddress) session.getRemoteAddress();
+			String addr=saddr.getAddress().getHostAddress()+":"+saddr.getPort();
+			System.out.println("addr:"+addr);
+			RemoteLinkedClient remoteClient=new RemoteLinkedClient();
+			remoteClient.ioSession = session;
+			remoteClient.sendingMsg=null;
+			remoteClient.sentQueue=new LinkedList<SentMsgPair>();
+			
+			session.setAttribute("addr", addr);
+			session.setAttribute("remoteClient", remoteClient);
+			remoteClientMap.put(addr, remoteClient);
 		}
 
 		@Override
 		public void sessionClosed(IoSession session) throws Exception {
 			System.out.println("sessionClosed " + session.getRemoteAddress());
 
-			connectionCallback.connectionLost();
-			if (sendingMsg != null) {
-				sendingMsg.callback.sendFailed();
+			String addr=(String) session.getAttribute("addr");
+			RemoteLinkedClient remoteClient=(RemoteLinkedClient)session.getAttribute("remoteClient");
+		
+			if (remoteClient.sendingMsg != null) {
+				remoteClient.sendingMsg.callback.sendFailed();
 			}
-			stopSendThread();
-			connector.dispose();
+			for(SentMsgPair pendingMsgPair:remoteClient.sentQueue){
+				pendingMsgPair.callback.sendFailed();
+			}
+			connectionCallback.connectionLost(addr);
+			
 		}
 
 		@Override
@@ -188,9 +158,7 @@ public class MinaLineServer extends LineServer {
 				throws Exception {
 
 			System.out.println("messageSent");
-			sendingMsg.notifyAll();
-			sendingMsg.callback.sendSuccess();
-			sendingMsg = null;
+			
 		}
 
 		@Override
@@ -211,29 +179,9 @@ public class MinaLineServer extends LineServer {
 
 	public static void main(String[] args) throws IOException {
 
-		String HOSTNAME = "localhost";
-		int PORT = 11112;
-		int CONNECT_TIMEOUT = 100;
-
-		String userName = "";
-		String password = "";
-		String url = "tcp://localhost:11111";
-
-		LineClientCallbackConnection callback = new LineClientCallbackConnection() {
-			@Override
-			public void connected() {
-				System.out.println("connect ok");
-			}
-
-			@Override
-			public void connectionLost() {
-				System.out.println("connectionLost");
-			}
-		};
 		
-		MinaLineClient minaLineClient = new MinaLineClient(userName, password);
-		minaLineClient.connect(url, callback);
-
+		MinaLineServer mnaLineServer=new MinaLineServer();
+		mnaLineServer.listen(port, callback);
 	}
 
 

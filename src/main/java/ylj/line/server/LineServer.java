@@ -27,5 +27,12 @@ public abstract class LineServer{
 
 	public abstract void listen(int port,LineServerCallbackAccept callback)throws Exception ;
 	
-	public abstract void send(Message msg,LineServerCallbackSend callback)throws Exception;
+	/**
+	 * 
+	 * @param addr localhost:8080
+	 * @param msg
+	 * @param callback
+	 * @throws Exception
+	 */
+	public abstract void send(String addr,Message msg,LineServerCallbackSend callback)throws Exception;
 }

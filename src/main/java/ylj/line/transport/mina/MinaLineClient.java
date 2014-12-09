@@ -130,6 +130,9 @@ public class MinaLineClient extends LineClient {
 			if (sendingMsg != null) {
 				sendingMsg.callback.sendFailed();
 			}
+			for(SentMsgPair pendingSentMsg:sendQueue){
+				pendingSentMsg.callback.sendFailed();
+			}
 			connector.dispose();
 		}
 
@@ -179,11 +182,6 @@ public class MinaLineClient extends LineClient {
 
 			session.close(true);
 
-			// connectionCallback.connectionLost();
-
-			// if(sendingMsg!=null){
-			// sendingMsg.callback.sendFailed();
-			// }
 		}
 
 	}
