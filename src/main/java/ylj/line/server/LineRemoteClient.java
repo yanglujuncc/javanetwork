@@ -4,4 +4,5 @@ public class LineRemoteClient {
 
 	public String ip;
 	public int port;
+	public String userName;
 }

@@ -15,14 +15,18 @@ import org.apache.mina.transport.socket.nio.NioSocketAcceptor;
 import org.apache.mina.transport.socket.nio.NioSocketConnector;
 
 import ylj.JavaNetwork.Mina.SimpleServer.ServerHandler;
+import ylj.line.client.LineClient;
 import ylj.line.client.LineClientCallbackConnection;
 import ylj.line.client.LineClientCallbackSend;
 import ylj.line.message.Message;
+import ylj.line.server.LineServer;
+import ylj.line.server.LineServerCallbackAccept;
+import ylj.line.server.LineServerCallbackSend;
 import ylj.line.transport.mina.MinaLineClient.ClientIOHandler;
 import ylj.line.transport.mina.MinaLineClient.SentMsgPair;
-import ylj.line.transport.mina.MinaLineClient.SentRun;
 
-public class MinaLineServer {
+
+public class MinaLineServer extends LineServer {
 	
 	NioSocketConnector connector;
 	LineClientCallbackConnection connectionCallback;
@@ -39,9 +43,9 @@ public class MinaLineServer {
 
 	class SentMsgPair {
 		Message msg;
-		LineClientCallbackSend callback;
+		LineServerCallbackSend callback;
 
-		public SentMsgPair(Message msg, LineClientCallbackSend callback) {
+		public SentMsgPair(Message msg, LineServerCallbackSend callback) {
 			this.msg = msg;
 			this.callback = callback;
 		}
@@ -72,28 +76,30 @@ public class MinaLineServer {
 	}
 
 
-	public void connect(String url, LineClientCallbackConnection callback) {
+	@Override
+	public void listen(int port, LineServerCallbackAccept callback) throws Exception {
 		// 服务端监听端口用
-				IoAcceptor acceptor = new NioSocketAcceptor();
-				// 日志filter
-				acceptor.getFilterChain().addLast("logger", new LoggingFilter());
-				// 对象序列化工厂，用来将java对象序列化成二进制流
-				acceptor.getFilterChain().addLast("textcodec", new ProtocolCodecFilter(new TextLineCodecFactory()));
-				// 业务处理handler
-				acceptor.setHandler(new ServerHandler());
+		IoAcceptor acceptor = new NioSocketAcceptor();
+		// 日志filter
+		acceptor.getFilterChain().addLast("logger", new LoggingFilter());
+		// 对象序列化工厂，用来将java对象序列化成二进制流
+		acceptor.getFilterChain().addLast("line.message.codec", new ProtocolCodecFilter(new MessageCodecFactory()));
+		// 业务处理handler
+		acceptor.setHandler(new ServerHandler());
 
-				acceptor.getSessionConfig().setReadBufferSize(2048);
-				acceptor.getSessionConfig().setIdleTime(IdleStatus.BOTH_IDLE, 10);
+		acceptor.getSessionConfig().setReadBufferSize(2048);
+		acceptor.getSessionConfig().setIdleTime(IdleStatus.BOTH_IDLE, 10);
 
-				// 设置监听端口
-				acceptor.bind(new InetSocketAddress(PORT));
+		// 设置监听端口
+		acceptor.bind(new InetSocketAddress(PORT));
 
-				System.out.println("Server starts to listen to PORT :" + PORT);
+		System.out.println("Server starts to listen to PORT :" + PORT);
 
+		
 	}
 
 	@Override
-	public void send(Message msg, LineClientCallbackSend callback) {
+	public void send(Message msg, LineServerCallbackSend callback) {
 		SentMsgPair sentMsgPair = new SentMsgPair(msg, callback);
 		try {
 			sentQueue.put(sentMsgPair);
@@ -129,7 +135,7 @@ public class MinaLineServer {
 
 	}
 
-	public class ClientIOHandler implements IoHandler {
+	public class ServerIOHandler implements IoHandler {
 
 		@Override
 		public void sessionCreated(IoSession session) throws Exception {
@@ -229,5 +235,9 @@ public class MinaLineServer {
 		minaLineClient.connect(url, callback);
 
 	}
+
+
+
+	
 
 }

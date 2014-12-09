@@ -9,7 +9,6 @@ public abstract class LineClient {
 	
 	protected  LineClientCallbackConnection callbackConnection;
 	protected  LineClientCallbackReceive callbackMsgReceive;
-	protected  LineClientCallbackSend callbackMsgSent;
 	
 	public LineClient(String userName,String password){
 		this.userName=userName;
@@ -26,8 +25,8 @@ public abstract class LineClient {
 	}
 
 	
-	public abstract void connect(String url,LineClientCallbackConnection callback);
+	public abstract void connect(String url,LineClientCallbackConnection callback)throws Exception ;
 	
-	public abstract void send(Message msg,LineClientCallbackSend callback);
+	public abstract void send(Message msg,LineClientCallbackSend callback)throws Exception ;
 	
 }

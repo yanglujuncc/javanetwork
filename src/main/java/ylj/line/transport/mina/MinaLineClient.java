@@ -2,6 +2,7 @@ package ylj.line.transport.mina;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.LinkedList;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.mina.core.service.IoHandler;
@@ -23,10 +24,10 @@ public class MinaLineClient extends LineClient {
 	IoSession ioSession;
 
 	SentMsgPair sendingMsg;
-	LinkedBlockingQueue<SentMsgPair> sendQueue;
+	LinkedList<SentMsgPair> sendQueue;
 
-	SentRun sendRunner;
-	Thread sendThread;
+	//SentRun sendRunner;
+	//Thread sendThread;
 
 	String HOSTNAME;
 	int PORT;
@@ -43,27 +44,11 @@ public class MinaLineClient extends LineClient {
 
 	public MinaLineClient(String userName, String password) {
 		super(userName, password);
-		sendQueue = new LinkedBlockingQueue<SentMsgPair>();
+		sendQueue = new LinkedList<SentMsgPair>();
 
 	}
 
-	public void startSendThread() {
-		if (sendThread != null && sendThread.isAlive()) {
-			sendThread.interrupt();
-		}
-		sendRunner = new SentRun();
-		sendThread = new Thread(sendRunner, "sent thread");
-		sendThread.start();
-
-	}
-
-	public void stopSendThread() {
-
-		if (sendThread != null && sendThread.isAlive()) {
-			sendThread.interrupt();
-		}
-
-	}
+	
 
 	@Override
 	public void connect(String url, LineClientCallbackConnection callback) {
@@ -101,40 +86,26 @@ public class MinaLineClient extends LineClient {
 
 	@Override
 	public void send(Message msg, LineClientCallbackSend callback) {
+		
 		SentMsgPair sentMsgPair = new SentMsgPair(msg, callback);
-		try {
-			sendQueue.put(sentMsgPair);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-
-	}
-
-	class SentRun implements Runnable {
-
-		@Override
-		public void run() {
-			System.out.println("send thread start...");
-			while (true) {
-				try {
-					if (sendingMsg != null)
-						sendQueue.wait();
-
-					sendingMsg = sendQueue.take();
-					ioSession.write(sendingMsg.msg);
-
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-					break;
-
-				}
-
+		
+		synchronized(sendQueue){
+			
+			if(sendingMsg!=null){
+				sendQueue.addLast(sentMsgPair);
 			}
-			System.out.println("send thread end.");
-
+			else{
+				sendingMsg=sentMsgPair;
+				ioSession.write(sentMsgPair.msg);
+			}
 		}
+		
+			
+		
 
 	}
+
+	
 
 	public class ClientIOHandler implements IoHandler {
 
@@ -148,7 +119,7 @@ public class MinaLineClient extends LineClient {
 			System.out.println("sessionOpened " + session.getRemoteAddress());
 			ioSession = session;
 			connectionCallback.connected();
-			startSendThread();
+	
 		}
 
 		@Override
@@ -159,7 +130,6 @@ public class MinaLineClient extends LineClient {
 			if (sendingMsg != null) {
 				sendingMsg.callback.sendFailed();
 			}
-			stopSendThread();
 			connector.dispose();
 		}
 
@@ -188,10 +158,18 @@ public class MinaLineClient extends LineClient {
 		public void messageSent(IoSession session, Object message)
 				throws Exception {
 
-			System.out.println("messageSent");
-			sendingMsg.notifyAll();
-			sendingMsg.callback.sendSuccess();
-			sendingMsg = null;
+			synchronized(sendQueue){
+				
+				if(sendQueue.size()==0){
+					sendingMsg=null;
+				}
+				else{
+					SentMsgPair firstMsgPair=sendQueue.removeFirst();
+					sendingMsg=firstMsgPair;
+					ioSession.write(firstMsgPair.msg);
+				}
+			}
+			
 		}
 
 		@Override
