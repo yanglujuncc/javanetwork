@@ -94,4 +94,12 @@ public class MySSLManager {
 		    };
 		 return new TrustManager[] {x509m };
 	}
+	
+	public static void main(String[] args) throws Exception{
+		System.out.println("KeyManagerFactory.getDefaultAlgorithm():"+KeyManagerFactory.getDefaultAlgorithm());
+		System.out.println("KeyStore.getDefaultType:"+KeyStore.getDefaultType());
+		KeyManager[] keyManagers=getServerKeyManagers();
+		
+		System.out.println("get key manage success");
+	}
 }
