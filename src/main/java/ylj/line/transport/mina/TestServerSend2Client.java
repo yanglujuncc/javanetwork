@@ -54,12 +54,12 @@ public class TestServerSend2Client {
 		String url = "tcp://localhost:"+ port;
 
 		
-		MinaLineClient minaLineClient = new MinaLineClient(userName, password);
+		final MinaLineClient minaLineClient = new MinaLineClient(userName, password);
 		minaLineClient.setReceiveCB(new LineClientCallbackReceive(){
 
 			@Override
 			public void messageReceived(Message message) {
-				System.out.println("received a message:"+message+" "+new String(message.data)+" @server");
+				System.out.println(minaLineClient.getAddr()+" received a message:"+message+" "+new String(message.data)+" @server");
 				
 			}
 			
@@ -83,13 +83,15 @@ public class TestServerSend2Client {
 	public static void main(String[] args) throws Exception {
 
 	 	MinaLineServer minaLineServer=initServer();		
-	 	MinaLineClient minaLineClient=initClient();
+	 	MinaLineClient minaLineClient1=initClient();
+		MinaLineClient minaLineClient2=initClient();
 	 	
+		 
 	 	for(int i=0;i<100;i++){
-	 		System.out.println("minaLineClient.isConnect():"+minaLineClient.isConnect());
-			if(minaLineClient.isConnect()){
+	 		System.out.println("minaLineClient.isConnect():"+minaLineClient1.isConnect());
+			if(minaLineClient1.isConnect()){
 				
-				String addr=minaLineClient.getAddr();
+				String addr=minaLineClient1.getAddr();
 				
 				minaLineServer.send(addr,new Message((short)1,(short)1,("i am server "+i).getBytes()),new LineServerCallbackSend(){
 
@@ -106,10 +108,31 @@ public class TestServerSend2Client {
 				});
 				
 			}
-			Thread.sleep(10);
+			System.out.println("minaLineClient.isConnect():"+minaLineClient2.isConnect());
+			if(minaLineClient2.isConnect()){
+				
+				String addr=minaLineClient2.getAddr();
+				
+				minaLineServer.send(addr,new Message((short)1,(short)1,("i am server "+i).getBytes()),new LineServerCallbackSend(){
+
+					@Override
+					public void sendSuccess() {
+						System.out.println("send success");
+					}
+
+					@Override
+					public void sendFailed() {
+						System.out.println("send failed");
+					}
+					
+				});
+				
+			}
+			Thread.sleep(1000);
 		}
 	 	minaLineServer.close();
-	 	minaLineClient.close();
+	 	minaLineClient1.close();
+		minaLineClient2.close();
 	}
 }
 

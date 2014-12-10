@@ -59,7 +59,6 @@ public class MinaLineClient extends LineClient {
 			return null;
 		
 		String addr=saddr.getAddress().getHostAddress()+":"+saddr.getPort();
-	
 		return addr;
 	}
 	public boolean isConnect(){
