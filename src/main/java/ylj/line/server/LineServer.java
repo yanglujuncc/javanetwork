@@ -6,7 +6,7 @@ import ylj.line.message.Message;
 public abstract class LineServer{
 
 	
-	protected  LineServerCallbackAccept callbackAccept;
+
 	protected  LineServerCallbackReceive callbackMsgReceive;
 
 	
@@ -19,7 +19,7 @@ public abstract class LineServer{
 	 * @param callback
 	 */
 
-	public void setCReceiveCB(LineServerCallbackReceive callback){
+	public void setReceiveCB(LineServerCallbackReceive callback){
 		this.callbackMsgReceive=callback;
 	}
 

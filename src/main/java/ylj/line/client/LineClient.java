@@ -20,7 +20,7 @@ public abstract class LineClient {
 	 * @param callback
 	 */
 
-	public void setCReceiveCB(LineClientCallbackReceive callback){
+	public void setReceiveCB(LineClientCallbackReceive callback){
 		this.callbackMsgReceive=callback;
 	}
 

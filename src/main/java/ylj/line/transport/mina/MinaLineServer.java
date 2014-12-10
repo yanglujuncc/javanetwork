@@ -13,27 +13,20 @@ import org.apache.mina.core.service.IoHandler;
 import org.apache.mina.core.session.IdleStatus;
 import org.apache.mina.core.session.IoSession;
 import org.apache.mina.filter.codec.ProtocolCodecFilter;
-import org.apache.mina.filter.codec.textline.TextLineCodecFactory;
 import org.apache.mina.filter.logging.LoggingFilter;
 import org.apache.mina.transport.socket.nio.NioSocketAcceptor;
-import org.apache.mina.transport.socket.nio.NioSocketConnector;
 
-import ylj.JavaNetwork.Mina.SimpleServer.ServerHandler;
-import ylj.line.client.LineClientCallbackConnection;
+
 import ylj.line.message.Message;
 import ylj.line.server.LineServer;
 import ylj.line.server.LineServerCallbackAccept;
 import ylj.line.server.LineServerCallbackSend;
-
 
 public class MinaLineServer extends LineServer {
 	
 	IoAcceptor acceptor;
 	LineServerCallbackAccept connectionCallback;
 	
-
-
-	int PORT;
 
 	Map<String,RemoteLinkedClient> remoteClientMap;
 	
@@ -50,7 +43,7 @@ public class MinaLineServer extends LineServer {
 	
 	class RemoteLinkedClient{
 		SentMsgPair sendingMsg;
-		LinkedList<SentMsgPair> sentQueue;
+		LinkedList<SentMsgPair> sendQueue;
 		IoSession ioSession;
 		
 		
@@ -61,35 +54,58 @@ public class MinaLineServer extends LineServer {
 		remoteClientMap=new HashMap<String,RemoteLinkedClient> ();
 	}
 
+	public void close(){
+		acceptor.dispose();
+	}
 
 
 	@Override
 	public void listen(int port, LineServerCallbackAccept callback) throws Exception {
 		// 服务端监听端口用
-		IoAcceptor acceptor = new NioSocketAcceptor();
+		 acceptor = new NioSocketAcceptor();
 		// 日志filter
 		acceptor.getFilterChain().addLast("logger", new LoggingFilter());
 		// 对象序列化工厂，用来将java对象序列化成二进制流
 		acceptor.getFilterChain().addLast("line.message.codec", new ProtocolCodecFilter(new MessageCodecFactory()));
 		// 业务处理handler
-		acceptor.setHandler(new ServerHandler());
+		acceptor.setHandler(new ServerIOHandler());
 
 		acceptor.getSessionConfig().setReadBufferSize(2048);
-		acceptor.getSessionConfig().setIdleTime(IdleStatus.BOTH_IDLE, 10);
+	//	acceptor.getSessionConfig().setIdleTime(IdleStatus.BOTH_IDLE, 10);
 
 		// 设置监听端口
-		acceptor.bind(new InetSocketAddress(PORT));
+		acceptor.bind(new InetSocketAddress(port));
 
-		System.out.println("Server starts to listen to PORT :" + PORT);
+		System.out.println("Server starts to listen to PORT :" + port);
 
+		this.connectionCallback=callback;
 		
 	}
 
 	@Override
 	public void send(String addr,Message msg, LineServerCallbackSend callback) {
+		
+		
+		
+		RemoteLinkedClient rmoteClient=remoteClientMap.get(addr);
+		if(rmoteClient==null){
+			System.out.println(" rmoteClient==null, addr:"+addr);
+			return ;
+		}
+		
 		SentMsgPair sentMsgPair = new SentMsgPair(msg, callback);
-	
-
+			
+		synchronized(rmoteClient.sendQueue){
+			
+			if(rmoteClient.sendingMsg!=null){
+				rmoteClient.sendQueue.addLast(sentMsgPair);
+			}
+			else{
+				rmoteClient.sendingMsg=sentMsgPair;
+				rmoteClient.ioSession.write(sentMsgPair.msg);
+			}
+		}
+		
 	}
 
 	public class ServerIOHandler implements IoHandler {
@@ -101,18 +117,23 @@ public class MinaLineServer extends LineServer {
 
 		@Override
 		public void sessionOpened(IoSession session) throws Exception {
+			
 			System.out.println("sessionOpened " + session.getRemoteAddress());
 			InetSocketAddress saddr=(InetSocketAddress) session.getRemoteAddress();
 			String addr=saddr.getAddress().getHostAddress()+":"+saddr.getPort();
+			
 			System.out.println("addr:"+addr);
 			RemoteLinkedClient remoteClient=new RemoteLinkedClient();
 			remoteClient.ioSession = session;
 			remoteClient.sendingMsg=null;
-			remoteClient.sentQueue=new LinkedList<SentMsgPair>();
+			remoteClient.sendQueue=new LinkedList<SentMsgPair>();
 			
 			session.setAttribute("addr", addr);
 			session.setAttribute("remoteClient", remoteClient);
+			
 			remoteClientMap.put(addr, remoteClient);
+		
+			connectionCallback.connected(addr);
 		}
 
 		@Override
@@ -125,11 +146,12 @@ public class MinaLineServer extends LineServer {
 			if (remoteClient.sendingMsg != null) {
 				remoteClient.sendingMsg.callback.sendFailed();
 			}
-			for(SentMsgPair pendingMsgPair:remoteClient.sentQueue){
+			for(SentMsgPair pendingMsgPair:remoteClient.sendQueue){
 				pendingMsgPair.callback.sendFailed();
 			}
-			connectionCallback.connectionLost(addr);
 			
+			connectionCallback.connectionLost(addr);
+		
 		}
 
 		@Override
@@ -147,8 +169,9 @@ public class MinaLineServer extends LineServer {
 			if (!(message instanceof Message)) {
 				// not a Message obj
 			} else {
+				String addr=(String)session.getAttribute("addr");
 				Message msg = (Message) message;
-				callbackMsgReceive.messageReceived(msg);
+				callbackMsgReceive.messageReceived(addr,msg);
 			}
 
 		}
@@ -158,6 +181,20 @@ public class MinaLineServer extends LineServer {
 				throws Exception {
 
 			System.out.println("messageSent");
+			
+			RemoteLinkedClient remoteClient=(RemoteLinkedClient)session.getAttribute("remoteClient");
+		
+			synchronized(remoteClient.sendQueue){
+				
+				if(remoteClient.sendQueue.size()==0){
+					remoteClient.sendingMsg=null;
+				}
+				else{
+					SentMsgPair firstMsgPair=remoteClient.sendQueue.removeFirst();
+					remoteClient.sendingMsg=firstMsgPair;
+					remoteClient.ioSession.write(firstMsgPair.msg);
+				}
+			}
 			
 		}
 
@@ -177,11 +214,29 @@ public class MinaLineServer extends LineServer {
 
 	}
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws Exception {
 
 		
 		MinaLineServer mnaLineServer=new MinaLineServer();
-		mnaLineServer.listen(port, callback);
+		int port=11111;
+		
+		
+		mnaLineServer.listen(port, new LineServerCallbackAccept(){
+
+			@Override
+			public void connected(String addr) {
+				
+				System.out.println("connected:"+addr);
+			}
+
+			@Override
+			public void connectionLost(String addr) {
+
+				System.out.println("connectionLost:"+addr);
+				
+			}
+			
+		});
 	}
 
 

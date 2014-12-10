@@ -6,6 +6,6 @@ public interface LineServerCallbackReceive {
 	
 
 
-	public void messageReceived(Message message) ;
+	public void messageReceived(String addr,Message message) ;
 
 }
